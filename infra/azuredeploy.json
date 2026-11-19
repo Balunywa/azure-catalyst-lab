@@ -1,0 +1,313 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.41.2.15936",
+      "templateHash": "10317633020767491390"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Region for every resource. The VM size must support nested virtualization (Intel Dsv5/Esv5/Dsv6/Esv6...)."
+      }
+    },
+    "vmSize": {
+      "type": "string",
+      "defaultValue": "Standard_E8s_v6",
+      "metadata": {
+        "description": "Host VM size: >= 8 vCPU and >= 64 GB RAM for the full 16-VM estate."
+      }
+    },
+    "adminUsername": {
+      "type": "string",
+      "defaultValue": "labadmin",
+      "metadata": {
+        "description": "Admin user for the host VM (sign in through Azure Bastion)."
+      }
+    },
+    "adminPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Admin password for the host VM."
+      }
+    },
+    "prefix": {
+      "type": "string",
+      "defaultValue": "catlab",
+      "metadata": {
+        "description": "Prefix for resource names."
+      }
+    },
+    "repoUrl": {
+      "type": "string",
+      "defaultValue": "https://github.com/Balunywa/azure-catalyst-lab",
+      "metadata": {
+        "description": "Git repo that holds the lab scripts (the VM downloads it at deploy time)."
+      }
+    },
+    "repoRef": {
+      "type": "string",
+      "defaultValue": "main",
+      "metadata": {
+        "description": "Branch or tag of repoUrl to deploy."
+      }
+    },
+    "acceptSqlExpressLicense": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Install SQL Server 2022 Express on CAT-SQL01. Setting true accepts the Microsoft SQL Server license terms."
+      }
+    },
+    "bastionSku": {
+      "type": "string",
+      "defaultValue": "Developer",
+      "allowedValues": [
+        "Developer",
+        "Basic"
+      ],
+      "metadata": {
+        "description": "Azure Bastion SKU. Developer is free but not offered in every region; use Basic if deployment fails."
+      }
+    },
+    "dataDiskGB": {
+      "type": "int",
+      "defaultValue": 512,
+      "metadata": {
+        "description": "Data disk (GB) that holds the nested VMs."
+      }
+    }
+  },
+  "variables": {
+    "vmName": "[format('{0}-hv01', parameters('prefix'))]",
+    "rawBase": "[replace(parameters('repoUrl'), 'https://github.com/', 'https://raw.githubusercontent.com/')]",
+    "tags": {
+      "purpose": "azure-catalyst-lab",
+      "source": "[parameters('repoUrl')]"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "2023-11-01",
+      "name": "[format('{0}-nsg', parameters('prefix'))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "securityRules": []
+      }
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2023-11-01",
+      "name": "[format('{0}-vnet', parameters('prefix'))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "10.50.0.0/16"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "snet-host",
+            "properties": {
+              "addressPrefix": "10.50.1.0/24",
+              "networkSecurityGroup": {
+                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-nsg', parameters('prefix')))]"
+              }
+            }
+          },
+          {
+            "name": "snet-migrated",
+            "properties": {
+              "addressPrefix": "10.50.2.0/24"
+            }
+          },
+          {
+            "name": "AzureBastionSubnet",
+            "properties": {
+              "addressPrefix": "10.50.255.0/26"
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-nsg', parameters('prefix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/publicIPAddresses",
+      "apiVersion": "2023-11-01",
+      "name": "[format('{0}-pip', variables('vmName'))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "sku": {
+        "name": "Standard"
+      },
+      "properties": {
+        "publicIPAllocationMethod": "Static"
+      }
+    },
+    {
+      "type": "Microsoft.Network/networkInterfaces",
+      "apiVersion": "2023-11-01",
+      "name": "[format('{0}-nic', variables('vmName'))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "enableAcceleratedNetworking": true,
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "subnet": {
+                "id": "[format('{0}/subnets/snet-host', resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('prefix'))))]"
+              },
+              "privateIPAllocationMethod": "Dynamic",
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses', format('{0}-pip', variables('vmName')))]"
+              }
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/publicIPAddresses', format('{0}-pip', variables('vmName')))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('prefix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines",
+      "apiVersion": "2024-07-01",
+      "name": "[variables('vmName')]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "[parameters('vmSize')]"
+        },
+        "osProfile": {
+          "computerName": "[variables('vmName')]",
+          "adminUsername": "[parameters('adminUsername')]",
+          "adminPassword": "[parameters('adminPassword')]",
+          "windowsConfiguration": {
+            "enableAutomaticUpdates": false,
+            "patchSettings": {
+              "patchMode": "Manual"
+            }
+          }
+        },
+        "storageProfile": {
+          "diskControllerType": "NVMe",
+          "imageReference": {
+            "publisher": "MicrosoftWindowsServer",
+            "offer": "windowsserver2022",
+            "sku": "2022-datacenter-g2",
+            "version": "latest"
+          },
+          "osDisk": {
+            "createOption": "FromImage",
+            "diskSizeGB": 128,
+            "managedDisk": {
+              "storageAccountType": "Premium_LRS"
+            }
+          },
+          "dataDisks": [
+            {
+              "lun": 0,
+              "createOption": "Empty",
+              "diskSizeGB": "[parameters('dataDiskGB')]",
+              "caching": "ReadOnly",
+              "managedDisk": {
+                "storageAccountType": "Premium_LRS"
+              }
+            }
+          ]
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', format('{0}-nic', variables('vmName')))]"
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkInterfaces', format('{0}-nic', variables('vmName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines/extensions",
+      "apiVersion": "2024-07-01",
+      "name": "[format('{0}/{1}', variables('vmName'), 'catalyst-lab-bootstrap')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "publisher": "Microsoft.Compute",
+        "type": "CustomScriptExtension",
+        "typeHandlerVersion": "1.10",
+        "autoUpgradeMinorVersion": true,
+        "settings": {
+          "fileUris": [
+            "[format('{0}/{1}/host/00-Bootstrap.ps1', variables('rawBase'), parameters('repoRef'))]"
+          ]
+        },
+        "protectedSettings": {
+          "commandToExecute": "[format('powershell -NoProfile -ExecutionPolicy Bypass -File 00-Bootstrap.ps1 -RepoUrl {0} -RepoRef {1} -AcceptSqlExpressLicense {2}', parameters('repoUrl'), parameters('repoRef'), if(parameters('acceptSqlExpressLicense'), '1', '0'))]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/virtualMachines', variables('vmName'))]"
+      ]
+    },
+    {
+      "condition": "[equals(parameters('bastionSku'), 'Basic')]",
+      "type": "Microsoft.Network/publicIPAddresses",
+      "apiVersion": "2023-11-01",
+      "name": "[format('{0}-bastion-pip', parameters('prefix'))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "sku": {
+        "name": "Standard"
+      },
+      "properties": {
+        "publicIPAllocationMethod": "Static"
+      }
+    },
+    {
+      "type": "Microsoft.Network/bastionHosts",
+      "apiVersion": "2024-01-01",
+      "name": "[format('{0}-bastion', parameters('prefix'))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "sku": {
+        "name": "[parameters('bastionSku')]"
+      },
+      "properties": "[if(equals(parameters('bastionSku'), 'Developer'), createObject('virtualNetwork', createObject('id', resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('prefix'))))), createObject('ipConfigurations', createArray(createObject('name', 'ipconfig1', 'properties', createObject('subnet', createObject('id', format('{0}/subnets/AzureBastionSubnet', resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('prefix'))))), 'publicIPAddress', createObject('id', resourceId('Microsoft.Network/publicIPAddresses', format('{0}-bastion-pip', parameters('prefix')))))))))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/publicIPAddresses', format('{0}-bastion-pip', parameters('prefix')))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('prefix')))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "hostVmName": {
+      "type": "string",
+      "value": "[variables('vmName')]"
+    },
+    "bastionName": {
+      "type": "string",
+      "value": "[format('{0}-bastion', parameters('prefix'))]"
+    },
+    "buildStatus": {
+      "type": "string",
+      "value": "The VM builds itself for ~100 minutes after deployment. Check progress: ./scripts/Get-LabStatus.ps1, or C:\\Lab\\status.json on the VM."
+    }
+  }
+}

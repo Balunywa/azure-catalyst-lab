@@ -1,0 +1,6 @@
+# Your environment: secrets, SSH keys, state, logs, generated CMDB output
+.lab/
+logs/
+cmdb/
+lab.settings.local.json
+*.rendered.ps1
