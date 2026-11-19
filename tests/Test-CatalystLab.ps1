@@ -40,9 +40,14 @@ function ArmGet([string]$Path) {
 }
 function Get-LabResource([string]$Type) {
     # Resources in the Catalyst RG; when it holds several projects, keep the ones named after ours
+    # Only fall back to "everything in the RG" when the RG holds no resources named after our project at all
+    # (e.g. a project created with a different name); otherwise another project's sites would leak in.
     $all = @(az resource list -g $crg --subscription $sub --resource-type $Type -o json 2>$null | ConvertFrom-Json)
     $mine = @($all | Where-Object { $_.name -like "$($cfg.MigrateProjectName)*" })
-    if ($mine) { $mine } elseif ($Type -like 'Microsoft.Migrate/migrateProjects') { @() } else { $all }
+    if (-not $script:projectNamedResources) {
+        $script:projectNamedResources = @(az resource list -g $crg --subscription $sub --query "[?starts_with(name, '$($cfg.MigrateProjectName)')].id" -o tsv 2>$null).Count
+    }
+    if ($mine -or $script:projectNamedResources -gt 0 -or $Type -like 'Microsoft.Migrate/migrateProjects') { $mine } else { $all }
 }
 
 # Test-migrated VMs (needed by the probe so the host can curl them over the VNet)

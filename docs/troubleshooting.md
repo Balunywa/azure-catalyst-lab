@@ -38,6 +38,8 @@
 |---|---|
 | Appliance services stopped after registration starts | The appliance auto-updates its agents during the prerequisite checks. Wait, or run `Restart-Service amhv*, amsqlsvc, amwebappsvc` on CAT-APPLIANCE. |
 | Hyper-V host validation fails | Use IP `192.168.100.1` with the `catdiscovery` account from `Get-LabCredentials.ps1`. WinRM 5985/5986 is open to the lab subnet only. |
-| No dependency data | Add guest credentials (domain `CATLAB\Administrator`, Linux `labadmin`), then turn on dependency analysis. Data builds up over a few hours. |
+| Windows servers show **Validation failed** / `CredentialNotProvided`; software inventory stuck at ~50% | The domain credential didn't validate. `ActiveDirectoryServerUnavailable` means the workgroup appliance can't resolve the domain: point its DNS at CAT-DC01 (the build does this). `InValid` means the username format is wrong: use domain `catlab.local` + username `Administrator`. Adding a **Windows (Non-domain)** `Administrator` credential also works. `scripts/03-Configure-ApplianceDiscovery.ps1` sets all of this up. |
+| No dependency data | Needs validated guest credentials. Linux data appears first. The map fills in over a few hours of collection. |
+| Inventory shows **Applications 0** | Applications are logical groupings, not servers. Run *Applications → Add applications → Auto discover applications* once inventory is complete, or import an *Application name* column via *Export all inventory* → *Import applications*. |
 | CSV import warnings about OS names | Catalyst recognises names that contain an entry from its supported OS list. `05-Build-Cmdb.ps1` writes `Microsoft Windows Server 2022 (64-bit)` and `Debian GNU/Linux 12`. |
 | Test migration fails on quota | The host uses 8 vCPUs. Test-migrate one 2-vCPU VM at a time, or raise the regional quota. |

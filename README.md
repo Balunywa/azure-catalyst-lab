@@ -101,7 +101,7 @@ Step-by-step, with exact values: **[docs/portal-steps.md](docs/portal-steps.md)*
 
 1. **Create a Catalyst project** in the portal (Azure Catalyst / Azure Migrate → Servers, databases and web apps).
 2. **Discover**, either:
-   - **Appliance:** Bastion → host → Hyper-V Manager → CAT-APPLIANCE. Register it with the project key, add the Hyper-V host `192.168.100.1` plus guest credentials, and turn on dependency analysis.
+   - **Appliance:** Bastion → host → **CAT-APPLIANCE** shortcut on the desktop. Paste the project key and sign in. Then run `./scripts/03-Configure-ApplianceDiscovery.ps1`, which adds the host source, the guest credentials for inventory and dependencies, and starts discovery.
    - **CMDB import:** `./scripts/05-Build-Cmdb.ps1` builds a CMDB from the live estate (`cmdb/cmdb.csv` plus relationships). It also exports `cmdb/catalyst-import.csv` in Catalyst's import template; upload that under *Discover → Import using CSV*.
 3. **Assess** the servers, explore the dependency map, and ask the **Catalyst agent** to plan migration waves.
 4. **Migrate:** install the Hyper-V replication provider with `./scripts/04-Install-ReplicationProvider.ps1 -KeyFile <.VaultCredentials>`. Then replicate and **test-migrate** a VM into `snet-migrated`. `Test-CatalystLab.ps1` checks that the migrated app answers from Azure.

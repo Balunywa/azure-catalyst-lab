@@ -16,11 +16,15 @@ Catalyst still runs on the Azure Migrate engine, and some blades and Learn pages
 3. **Register it.** Open **Azure Migrate Appliance Configuration Manager** (desktop shortcut, or `https://localhost:44368`).
    - Let the prerequisite checks and the auto-update finish.
    - Paste the key → **Verify** → **Login**, and complete the device-code sign-in with your Azure account.
-4. **Hyper-V host.** Under *Add credentials*, choose Hyper-V host, user `catdiscovery`, password `DiscoveryPassword`. Then *Add discovery source*: IP `192.168.100.1`.
-5. **Guest credentials** (for software inventory and the dependency map):
-   * Domain credentials: `CATLAB\Administrator` / guest password, which covers all Windows servers.
-   * Linux (non-domain): `labadmin` / guest password.
-6. Turn on **dependency analysis**, then select **Start discovery**. Servers appear in about 15 minutes, and dependency data builds over the following hours.
+4. **Configure discovery.** The quickest way: from your machine, run `./scripts/03-Configure-ApplianceDiscovery.ps1`. It drives the config manager's own API, adds everything below, then starts discovery. To do it by hand instead, under *Manage credentials and discovery sources*:
+   * **Hyper-V host:** credential `catdiscovery` / `DiscoveryPassword`, discovery source IP `192.168.100.1`.
+   * **Guest credentials**, for software inventory and the dependency map:
+     * Domain credentials: domain `catlab.local`, username **`Administrator`**. Use the plain name; `CATLAB\Administrator` or `.\Administrator` fail validation.
+     * Windows (non-domain): `Administrator`.
+     * Linux (non-domain): `labadmin`.
+     * All three use the guest password.
+   * **Start discovery.** Servers appear in about 15 minutes. Software inventory and the dependency map fill in over the next hours.
+5. **Applications.** Once inventory is in, open *Applications* → **Add applications → Auto discover applications**. It's one-time and takes up to an hour. Catalyst groups servers into apps, with a confidence score for each. Compare the result with the CMDB's 13 apps in `cmdb/cmdb.csv`.
 
 ## 2b. Discover from the CMDB: CSV import (no appliance needed)
 
